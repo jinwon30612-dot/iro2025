@@ -27,6 +27,19 @@
             color: #ef4444; /* red-500 */
             margin-left: 4px;
         }
+
+        /* 로딩 스피너 애니메이션 */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff; /* 흰색 스피너 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
     </style>
 </head>
 <body>
@@ -94,6 +107,15 @@
 
         </div>
     </div>
+    
+    <!-- 로딩 모달 (화면 전체를 덮고 가운데에 스피너 표시) -->
+    <div id="loadingModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden">
+        <div class="p-6 rounded-lg text-white text-lg flex flex-col items-center">
+            <div class="spinner mb-3"></div>
+            <p>신청서 제출 중...</p>
+            <p class="text-sm text-gray-300 mt-1">잠시만 기다려 주세요.</p>
+        </div>
+    </div>
 
     <script>
         document.getElementById('supportForm').addEventListener('submit', function(e) {
@@ -102,6 +124,28 @@
             const form = e.target;
             const messageBox = document.getElementById('messageBox');
             const submitButton = document.getElementById('submitButton');
+            const loadingModal = document.getElementById('loadingModal');
+            
+            // 헬퍼 함수: 모달 표시/숨기기
+            function toggleLoading(show) {
+                if (show) {
+                    loadingModal.classList.remove('hidden');
+                } else {
+                    loadingModal.classList.add('hidden');
+                }
+            }
+
+            // 헬퍼 함수: 메시지 표시
+            function showMessage(text, classes) {
+                if (text) {
+                    messageBox.textContent = text;
+                    messageBox.className = `mt-6 p-4 rounded-lg text-center ${classes}`;
+                    messageBox.classList.remove('hidden');
+                } else {
+                    messageBox.classList.add('hidden');
+                    messageBox.className = 'mt-6 p-4 rounded-lg text-center hidden';
+                }
+            }
             
             // 1. 유효성 검사 (모든 항목이 비어 있지 않은지 확인)
             const position = document.getElementById('position').value;
@@ -115,14 +159,13 @@
                 return;
             }
 
-            // 2. 버튼 비활성화 및 로딩 표시
+            // 2. 버튼 비활성화 및 로딩 모달 표시
             submitButton.disabled = true;
-            submitButton.textContent = '제출 중...';
             showMessage('', ''); // 메시지 초기화
+            toggleLoading(true); // 로딩 모달 표시
             
-            // Apps Script URL. 이 부분을 실제 배포 후 받은 URL로 변경해야 합니다.
-            // const SCRIPT_URL = '<YOUR_APPS_SCRIPT_URL>'; 
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbskKEoFX07ehzuexGH3QvmY_31CNLfPhI8HBAQXs3mysq0hbBlrs--GurC_o0GUEe/exec'; // 임시 URL (배포 후 변경 필요)
+            // Apps Script URL. 실제 URL로 변경해 주세요.
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbskKEoFX07ehzuexGH3QvmY_31CNLfPhI8HBAQXs3mysq0hbBlrs--GurC_o0GUEe/exec'; 
 
             // 3. FormData 객체 생성
             const formData = new FormData(form);
@@ -139,50 +182,31 @@
                 try {
                     const response = await fetch(SCRIPT_URL, {
                         method: 'POST',
-                        mode: 'no-cors', // Apps Script는 CORS 처리를 위해 no-cors 모드가 권장됨
-                        // body: JSON.stringify(data), // Apps Script는 application/x-www-form-urlencoded 또는 FormData를 더 쉽게 처리
+                        mode: 'no-cors', 
                         body: new URLSearchParams(data)
                     });
                     
-                    // no-cors 모드에서는 응답 상태를 확인할 수 없으므로, 사용자에게 성공 메시지를 표시합니다.
-                    // 실제 성공 여부는 스프레드시트에서 확인해야 합니다.
+                    // no-cors 모드에서는 응답 확인이 어려우므로 성공으로 간주하고 메시지 표시
                     showMessage('✅ 신청이 성공적으로 제출되었습니다. 감사합니다!', 'bg-green-100 text-green-700');
                     form.reset(); // 성공 시 폼 초기화
 
                 } catch (error) {
                     if (currentRetry < MAX_RETRIES) {
-                        const delay = Math.pow(2, currentRetry) * 1000; // 1s, 2s, 4s, 8s, ...
+                        const delay = Math.pow(2, currentRetry) * 1000; 
                         currentRetry++;
-                        // console.log(`Submission failed, retrying in ${delay / 1000}s... (Attempt ${currentRetry})`);
                         setTimeout(submitData, delay);
                     } else {
-                        // console.error('Form submission failed after multiple retries:', error);
                         showMessage('❌ 제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', 'bg-red-100 text-red-700');
                     }
                 } finally {
-                    // 성공 또는 최종 실패 시 버튼 복구
-                    if (currentRetry >= MAX_RETRIES || document.getElementById('messageBox').classList.contains('bg-green-100')) {
-                        submitButton.disabled = false;
-                        submitButton.textContent = '신청서 제출';
-                    }
+                    // 성공 또는 최종 실패 시 버튼 복구 및 모달 숨기기
+                    submitButton.disabled = false;
+                    toggleLoading(false); // 로딩 모달 숨기기
                 }
             }
             
             submitData();
-
-            // 메시지 박스에 내용 표시
-            function showMessage(text, classes) {
-                if (text) {
-                    messageBox.textContent = text;
-                    messageBox.className = `mt-6 p-4 rounded-lg text-center ${classes}`;
-                    messageBox.classList.remove('hidden');
-                } else {
-                    messageBox.classList.add('hidden');
-                    messageBox.className = 'mt-6 p-4 rounded-lg text-center hidden';
-                }
-            }
         });
     </script>
 </body>
 </html>
-
